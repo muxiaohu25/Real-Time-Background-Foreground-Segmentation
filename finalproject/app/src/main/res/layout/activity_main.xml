@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:padding="16dp"
+    tools:context=".MainActivity">
+    <!-- creating a video view on below line -->
+
+    <VideoView
+        android:id="@+id/videoView"
+        android:layout_centerInParent="true"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_above="@id/idBtnRecordVideo"
+        android:layout_margin="5dp" />
+
+    <!-- creating a button to record a video on below line -->
+    <Button
+        android:id="@+id/idBtnRecordVideo"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_centerInParent="true"
+        android:layout_margin="10dp"
+        android:text="Record Video"
+        android:textAllCaps="false" />
+    <Button
+        android:id="@+id/idBtnToggleVideo"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Show Processed Video"
+        android:visibility="gone" /> <!-- Initially hidden -->
+</RelativeLayout>

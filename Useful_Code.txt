@@ -1,0 +1,82 @@
+The code get the pixel value of the first pixel at the second seconds.
+        double fps = videoCapture.get(Videoio.CAP_PROP_FPS); // Frames per second
+        int targetFrameIndex = (int) (fps * 2); // Calculate the frame for the 2nd second
+        Log.d("MainActivity", "successfully open the video2");
+        // Seek to the target frame
+        videoCapture.set(Videoio.CAP_PROP_POS_FRAMES, targetFrameIndex);
+        Log.d("MainActivity", "successfully open the video3");
+        Mat frame = new Mat();
+        if (videoCapture.read(frame)) {
+            Log.d("MainActivity", "Successfully read frame at 2 seconds");
+
+            // Access the pixel value of the first pixel (row 0, column 0)
+            double[] pixel = frame.get(0, 0); // Get RGB/BGR values as a double array
+            if (pixel != null) {
+                Log.d("MainActivity", "Pixel value at (0, 0): " +
+                        "Blue: " + pixel[0] +
+                        ", Green: " + pixel[1] +
+                        ", Red: " + pixel[2]);
+            } else {
+                Log.e("MainActivity", "Pixel value at (0, 0) is null");
+            }
+        } else {
+            Log.e("MainActivity", "Failed to read frame at 2 seconds");
+        }
+
+        // Release resources
+        videoCapture.release();
+
+
+            Mat resizedFrame = new Mat();
+            Imgproc.resize(frame, resizedFrame, new Size(targetWidth, targetHeight));
+            Mat processedFrame = new Mat();
+            Core.rotate(resizedFrame, processedFrame, Core.ROTATE_90_CLOCKWISE);
+            Imgproc.cvtColor(processedFrame, processedFrame, Imgproc.COLOR_RGB2BGR);
+
+            //TODO
+//            for (int row = 0; row < 40 && row < processedFrame.rows(); row++) {
+//                for (int col = 0; col < processedFrame.cols(); col++) {
+//                    processedFrame.put(row, col, new double[]{0, 0, 0}); // Set pixel to black
+//                }
+//            }
+
+
+
+            // Write the modified frame to the output video
+            videoWriter.write(processedFrame);
+            resizedFrame.release();
+            processedFrame.release();
+
+            // Resize the frame to the target resolution
+            Imgproc.resize(frame, resizedFrame, new Size(targetWidth, targetHeight));
+            Core.rotate(resizedFrame, resizedFrame, Core.ROTATE_90_CLOCKWISE);
+            // Apply background subtraction to detect moving objects
+            backgroundSubtractor.apply(resizedFrame, foregroundMask);
+
+            // Morphological operations to remove noise
+            Imgproc.morphologyEx(foregroundMask, foregroundMask, Imgproc.MORPH_OPEN, kernel);
+            Imgproc.dilate(foregroundMask, foregroundMask, kernel);
+
+            // Threshold to get a binary mask
+            Imgproc.threshold(foregroundMask, foregroundMask, 10, 255, Imgproc.THRESH_BINARY);
+
+            // Find contours of moving objects
+            List<MatOfPoint> contours = new ArrayList<>();
+            Mat hierarchy = new Mat();
+            Imgproc.findContours(foregroundMask, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
+
+            // Copy the resized frame for drawing bounding rectangles
+            resizedFrame.copyTo(processedFrame);
+
+            // Draw bounding rectangles and update the mask
+            for (MatOfPoint contour : contours) {
+                double area = Imgproc.contourArea(contour);
+                if (area < 300) {
+                    continue; // Ignore small contours
+                }
+                Rect boundingRect = Imgproc.boundingRect(contour);
+                Imgproc.rectangle(processedFrame, boundingRect, new Scalar(0, 255, 0), 2); // Green rectangle
+            }
+
+            // Write the processed frame to the output video
+            videoWriter.write(processedFrame);
