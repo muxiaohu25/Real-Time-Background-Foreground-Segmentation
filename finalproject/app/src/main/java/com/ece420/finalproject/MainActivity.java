@@ -39,9 +39,9 @@ import org.opencv.imgproc.Imgproc;
 import org.opencv.core.*;
 public class MainActivity extends AppCompatActivity {
 
-    private Button recordVideoBtn, toggleVideoBtn, processForegroundBtn;
+    private Button recordVideoBtn, toggleVideoBtn, processForegroundBtn,playMergedVideoBtn;
     private VideoView videoView;
-    private Uri recordedVideoUri, processedVideoUri,foregroundVideoUri;
+    private Uri recordedVideoUri, processedVideoUri,foregroundVideoUri,mergedVideoUri;
     private boolean isShowingProcessedVideo = false;
     private int frame_Count = 0;
 
@@ -61,6 +61,7 @@ public class MainActivity extends AppCompatActivity {
         recordVideoBtn = findViewById(R.id.idBtnRecordVideo);
         toggleVideoBtn = findViewById(R.id.idBtnToggleVideo);
         processForegroundBtn = findViewById(R.id.idBtnProcessForeground);
+        playMergedVideoBtn = findViewById(R.id.idBtnPlayMergedVideo);
         videoView = findViewById(R.id.videoView);
 
         // adding click listener for recording button.
@@ -106,8 +107,23 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+
+        // Play merged video button click listener
+        playMergedVideoBtn.setOnClickListener(v -> {
+            if (mergedVideoUri != null) {
+                videoView.stopPlayback();
+                videoView.setVideoURI(null);
+                Log.d("MainActivity", "Merged video is ready.");
+                videoView.setVideoURI(mergedVideoUri);
+                videoView.start();
+            } else {
+                Log.d("MainActivity", "Merged video is not ready yet.");
+            }
+        });
+
         toggleVideoBtn.setVisibility(View.GONE);
         processForegroundBtn.setVisibility(View.GONE);
+        playMergedVideoBtn.setVisibility(View.GONE);
     }
 
     @Override
@@ -124,11 +140,12 @@ public class MainActivity extends AppCompatActivity {
                     .create();
             processingDialog.show();
             new Thread(() -> {
-                foregroundVideoUri = seperateForeground(recordedVideoUri);
-                Log.d("MainActivity", "Foreground processing complete");
+                Uri foregroundVideoUriTemp = seperateForeground(recordedVideoUri);
+                foregroundVideoUri = foregroundVideoUriTemp;
+                mergedVideoUri = mergeForegroundWithBackground(foregroundVideoUriTemp, Uri.fromFile(new File("/storage/emulated/0/Android/data/com.ece420.finalproject/TOM.jpg")));
                 runOnUiThread(() -> {
-                    if (foregroundVideoUri != null) {
-                        processForegroundBtn.setVisibility(View.VISIBLE);
+                    if (mergedVideoUri != null) {
+                        playMergedVideoBtn.setVisibility(View.VISIBLE); // Show play merged video button
                     }
                 });
             }).start();
@@ -162,8 +179,8 @@ public class MainActivity extends AppCompatActivity {
         Log.d("MainActivity", getRealPathFromUri(videoUri));
 
         //Use the Recorded video
-//        VideoCapture videoCapture = new VideoCapture("/storage/emulated/0/Movies/sample6.mp4");
-        VideoCapture videoCapture = new VideoCapture(getRealPathFromUri(videoUri));
+        VideoCapture videoCapture = new VideoCapture("/storage/emulated/0/Movies/VID_20241205_112524100.mp4");
+//        VideoCapture videoCapture = new VideoCapture(getRealPathFromUri(videoUri));
 
         if (!videoCapture.isOpened()) {
             Log.e("MainActivity", "Failed to open video");
@@ -245,8 +262,10 @@ public class MainActivity extends AppCompatActivity {
         return Uri.fromFile(outputFile);
     }
 
+
     private Uri seperateForeground(Uri videoUri) {
         Log.d("MainActivity", "start seperateForeground");
+        Log.d("MainActivity", "first"+videoUri.toString());
         String inputVideoPath = getRealPathFromUri(videoUri);
         String outputVideoPath = getExternalFilesDir(null) + "/masked_output_video.avi";
         String outputFrameDirPath = getExternalFilesDir(null) + "/frames";
@@ -263,8 +282,8 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // Open input video
-//        VideoCapture cap = new VideoCapture("/storage/emulated/0/Movies/sample6.mp4");
-        VideoCapture cap = new VideoCapture(inputVideoPath);
+        VideoCapture cap = new VideoCapture("/storage/emulated/0/Movies/sample6.mp4");
+//        VideoCapture cap = new VideoCapture(inputVideoPath);
         if (!cap.isOpened()) {
             Log.e("MainActivity", "Failed to open video");
             return null;
@@ -288,55 +307,55 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // Initialize models
-        BackgroundModel model = new BackgroundModel(targetWidth, targetHeight, 5, 6, 128);
+        BackgroundModel model = new BackgroundModel(targetWidth, targetHeight, 15, 6, 128);
         Mat prevMask = null;
 
         // Process frames
         Mat frame = new Mat();
         Mat resizedFrame = new Mat();
         Mat ycbcrFrame = new Mat();
-        Mat blackBackground = Mat.zeros(new Size(targetWidth, targetHeight), CvType.CV_8UC3); // Black frame
-        int frameCount = 0;
-
+        int num_skip = 3;
         Log.d("MainActivity", "start processing frames");
         while (cap.read(frame)) {
-//            if(frameCount%10!=0){
-//                frameCount++;
-//                continue;
-//            }
+            if(frame_Count%num_skip!=0 && frame_Count>10){
+                frame_Count++;
+                continue;
+            }
             Imgproc.resize(frame, resizedFrame, new Size(targetWidth, targetHeight));
             Imgproc.cvtColor(resizedFrame, ycbcrFrame, Imgproc.COLOR_BGR2YCrCb);
 
             Mat foregroundMask = model.processFrame(ycbcrFrame);
 
             Mat processedForeground = model.postProcessForeground(foregroundMask, 50, prevMask,0.7);
-            String frameFilePath1 = outputFrameDirPath + "/mask" + String.format("%04d", frameCount) + ".png";
-            boolean success1 = Imgcodecs.imwrite(frameFilePath1, processedForeground);
+//            String frameFilePath1 = outputFrameDirPath + "/mask" + String.format("%04d", frame_Count) + ".png";
+//            boolean success1 = Imgcodecs.imwrite(frameFilePath1, processedForeground);
             prevMask = processedForeground.clone();
 
             Mat maskBinary = new Mat();
             Imgproc.threshold(processedForeground, maskBinary, 127, 255, Imgproc.THRESH_BINARY);
 
 
-            // Create a frame with the background blacked out
             Mat foregroundFrame = new Mat();
             Core.bitwise_and(resizedFrame, resizedFrame, foregroundFrame, maskBinary);
             Mat finalFrame = new Mat();
             Imgproc.cvtColor(foregroundFrame, finalFrame, Imgproc.COLOR_BGR2RGB);
             // Write the frame to the output video
+            for (int i = 0; i < num_skip; i++) {
+                writer.write(finalFrame);
+            }
             writer.write(finalFrame);
 
             // Save the current frame as an image
-            String frameFilePath = outputFrameDirPath + "/frame_" + String.format("%04d", frameCount) + ".png";
+            String frameFilePath = outputFrameDirPath + "/frame_" + String.format("%04d", frame_Count) + ".png";
             boolean success = Imgcodecs.imwrite(frameFilePath, finalFrame);
             if (success) {
                 Log.d("MainActivity", "Saved frame to " + frameFilePath);
             } else {
                 Log.e("MainActivity", "Failed to save frame " + frameFilePath);
             }
-            frameCount++;
+
             frame_Count++;
-            Log.d("MainActivity", "Processing frame " + frameCount);
+            Log.d("MainActivity", "Processing frame " + frame_Count);
         }
 
         cap.release();
@@ -344,16 +363,128 @@ public class MainActivity extends AppCompatActivity {
         Log.d("MainActivity", "Processing complete. Video saved as " + outputVideoPath);
         return Uri.fromFile(new File(outputVideoPath));
     }
-    private String getRealPathFromUri(Uri contentUri) {
-        String[] projection = { MediaStore.Video.Media.DATA };
-        Cursor cursor = getContentResolver().query(contentUri, projection, null, null, null);
-        if (cursor != null) {
-            int columnIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA);
-            cursor.moveToFirst();
-            String filePath = cursor.getString(columnIndex);
-            cursor.close();
-            return filePath;
+
+
+    private Uri mergeForegroundWithBackground(Uri foregroundVideoUri, Uri backgroundImageUri) {
+
+
+        Log.d("MainActivity", "Start merging foreground with background");
+
+
+        String outputVideoPath = getExternalFilesDir(null) + "/merged_output_video.avi";
+
+
+        Mat backgroundImage = Imgcodecs.imread(backgroundImageUri.getPath());
+        if (backgroundImage.empty()) {
+            Log.e("MainActivity", "Failed to load background image");
+            return null;
         }
-        return null;
+
+
+        int targetWidth = 320;
+        int targetHeight = 240;
+        Imgproc.resize(backgroundImage, backgroundImage, new Size(targetWidth, targetHeight));
+
+
+        Log.d("MainActivity", foregroundVideoUri.toString());
+        Log.d("MainActivity", getRealPathFromUri(foregroundVideoUri));
+        String foregroundVideoPath = getRealPathFromUri(foregroundVideoUri);
+        if (foregroundVideoPath == null || !(new File(foregroundVideoPath).exists())) {
+            Log.e("MainActivity", "Invalid foreground video path");
+            return null;
+        }
+
+        VideoCapture foregroundCap = new VideoCapture(foregroundVideoPath);
+        if (!foregroundCap.isOpened()) {
+            Log.e("MainActivity", "Failed to open foreground video");
+            return null;
+        }
+
+        // Initialize the output video writer
+        VideoWriter writer = new VideoWriter(
+                outputVideoPath,
+                VideoWriter.fourcc('H', '2', '6', '4'),
+                30, // Assuming 30 fps, adjust as needed
+                new Size(targetWidth, targetHeight)
+        );
+
+        if (!writer.isOpened()) {
+            Log.e("MainActivity", "Failed to initialize video writer");
+            foregroundCap.release();
+            return null;
+        }
+
+        // Process frames
+        Mat foregroundFrame = new Mat();
+        Mat finalFrame = new Mat();
+
+        Log.d("MainActivity", "Start processing foreground frames for merging");
+        while (foregroundCap.read(foregroundFrame)) {
+            // Resize the foreground frame to match the target size
+            Mat resizedForegroundFrame = new Mat();
+            Imgproc.resize(foregroundFrame, resizedForegroundFrame, new Size(targetWidth, targetHeight));
+            Imgproc.cvtColor(resizedForegroundFrame, resizedForegroundFrame, Imgproc.COLOR_BGR2RGB);
+
+            Mat maskBinary = new Mat();
+            Imgproc.cvtColor(resizedForegroundFrame, maskBinary, Imgproc.COLOR_BGR2GRAY);
+            Imgproc.threshold(maskBinary, maskBinary, 1, 255, Imgproc.THRESH_BINARY);
+
+            Mat invertedMask = new Mat();
+            Core.bitwise_not(maskBinary, invertedMask);
+
+            Mat maskedForeground = new Mat();
+            Core.bitwise_and(resizedForegroundFrame, resizedForegroundFrame, maskedForeground, maskBinary);
+
+            Mat maskedBackground = new Mat();
+            Core.bitwise_and(backgroundImage, backgroundImage, maskedBackground, invertedMask);
+
+            Core.add(maskedForeground, maskedBackground, finalFrame);
+
+            writer.write(finalFrame);
+
+            resizedForegroundFrame.release();
+            maskBinary.release();
+            invertedMask.release();
+            maskedForeground.release();
+            maskedBackground.release();
+        }
+
+        // Release all resources
+        foregroundCap.release();
+        writer.release();
+        backgroundImage.release();
+        foregroundFrame.release();
+        finalFrame.release();
+
+        Log.d("MainActivity", "Merging complete. Video saved as " + outputVideoPath);
+        return Uri.fromFile(new File(outputVideoPath));
+    }
+    private String getRealPathFromUri(Uri uri) {
+        if (uri == null) return null;
+
+        if ("file".equalsIgnoreCase(uri.getScheme())) {
+
+            return uri.getPath();
+        }
+
+        if ("content".equalsIgnoreCase(uri.getScheme())) {
+            // Handle content:// URIs
+            String[] projection = { MediaStore.Video.Media.DATA };
+            Cursor cursor = getContentResolver().query(uri, projection, null, null, null);
+            if (cursor != null) {
+                try {
+                    int columnIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA);
+                    cursor.moveToFirst();
+                    return cursor.getString(columnIndex);
+                } catch (IllegalArgumentException e) {
+                    Log.e("MainActivity", "Error retrieving file path from URI: " + e.getMessage());
+                } finally {
+                    cursor.close();
+                }
+            }
+        }
+
+
+        return uri.getPath();
     }
 }

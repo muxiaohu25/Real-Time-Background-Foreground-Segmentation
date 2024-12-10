@@ -123,35 +123,21 @@ public class BackgroundModel {
             return Mat.zeros(foreground.size(), foreground.type());
         }
 
-        // Step 1: Morphological opening to remove small noise
+
         Mat kernel = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, new Size(3, 3));
         Mat cleanForeground = new Mat();
         Imgproc.morphologyEx(foreground, cleanForeground, Imgproc.MORPH_OPEN, kernel);
 
-        // Debug: Save intermediate result
+
         Imgcodecs.imwrite("debug_cleanForeground.png", cleanForeground);
 
-        // Step 2: Connected components to eliminate small regions
-//        Mat stats = new Mat();
-//        Mat centroids = new Mat();
-//        Mat labels = new Mat();
-//        int numLabels = Imgproc.connectedComponentsWithStats(cleanForeground, labels, stats, centroids);
-//
-//        for (int i = 1; i < numLabels; i++) {
-//            int area = (int) stats.get(i, Imgproc.CC_STAT_AREA)[0];
-//            if (area < areaThreshold) {
-//                Core.inRange(labels, Scalar.all(i), Scalar.all(i), cleanForeground);
-//                cleanForeground.setTo(new Scalar(0), cleanForeground);
-//            }
-//        }
+
         Mat stats = new Mat();
         Mat centroids = new Mat();
         Mat labels = new Mat();
 
-// Perform connected components analysis
         int numLabels = Imgproc.connectedComponentsWithStats(cleanForeground, labels, stats, centroids);
 
-// Create a mask to store the regions above the area threshold
         Mat filteredMask = Mat.zeros(cleanForeground.size(), CvType.CV_8U);
 
         for (int i = 1; i < numLabels; i++) { // Skip label 0 (background)
@@ -165,19 +151,18 @@ public class BackgroundModel {
             }
         }
 
-// Replace cleanForeground with the filtered mask
+
         cleanForeground = filteredMask;
         // Debug: Save result after connected components
         Imgcodecs.imwrite("debug_afterConnectedComponents.png", cleanForeground);
 
-        // Step 3: Fill holes in the remaining regions
         Mat filledForeground = new Mat();
         Imgproc.morphologyEx(cleanForeground, filledForeground, Imgproc.MORPH_CLOSE, kernel);
 
-        // Debug: Save result after filling holes
+
         Imgcodecs.imwrite("debug_filledForeground.png", filledForeground);
 
-        // Step 4: Find the largest contour
+
         ArrayList<MatOfPoint> contours = new ArrayList<>();
         Imgproc.findContours(filledForeground, contours, new Mat(), Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
 
@@ -186,17 +171,17 @@ public class BackgroundModel {
             return Mat.zeros(foreground.size(), foreground.type());
         }
 
-        // Debug: Log the number of contours
+
         Log.d("PostProcess", "Number of contours: " + contours.size());
 
         MatOfPoint largestContour = Collections.max(contours, (c1, c2) -> Double.compare(Imgproc.contourArea(c1), Imgproc.contourArea(c2)));
         Mat largestContourMask = Mat.zeros(foreground.size(), CvType.CV_8U);
         Imgproc.drawContours(largestContourMask, Collections.singletonList(largestContour), -1, new Scalar(255), Core.FILLED);
 
-        // Debug: Save result with largest contour
+
         Imgcodecs.imwrite("debug_largestContourMask.png", largestContourMask);
 
-        // Step 5: Temporal smoothing (optional)
+
         if (prevMask != null) {
             Mat smoothedMask = new Mat();
             Core.addWeighted(largestContourMask, alpha, prevMask, 1 - alpha, 0, smoothedMask);
