@@ -39,10 +39,11 @@ import org.opencv.imgproc.Imgproc;
 import org.opencv.core.*;
 public class MainActivity extends AppCompatActivity {
 
-    private Button recordVideoBtn, toggleVideoBtn;
+    private Button recordVideoBtn, toggleVideoBtn, processForegroundBtn;
     private VideoView videoView;
-    private Uri recordedVideoUri, processedVideoUri;
+    private Uri recordedVideoUri, processedVideoUri,foregroundVideoUri;
     private boolean isShowingProcessedVideo = false;
+    private int frame_Count = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -59,6 +60,7 @@ public class MainActivity extends AppCompatActivity {
         // initializing variables on below line.
         recordVideoBtn = findViewById(R.id.idBtnRecordVideo);
         toggleVideoBtn = findViewById(R.id.idBtnToggleVideo);
+        processForegroundBtn = findViewById(R.id.idBtnProcessForeground);
         videoView = findViewById(R.id.videoView);
 
         // adding click listener for recording button.
@@ -75,22 +77,39 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 if (recordedVideoUri != null) {
-                    if (isShowingProcessedVideo) {
-                        // Show original video
-                        videoView.setVideoURI(recordedVideoUri);
-                        toggleVideoBtn.setText("Show Processed Video");
-                    } else {
-                        // Show processed video
-                        videoView.setVideoURI(processedVideoUri);
-                        toggleVideoBtn.setText("Show Original Video");
-                    }
-                    isShowingProcessedVideo = !isShowingProcessedVideo;
+                    Log.d("MainActivity", "Processed background video is ready.");
+                    videoView.stopPlayback();
+                    videoView.setVideoURI(null);
+                    processForegroundBtn.setVisibility(View.VISIBLE);
+                    videoView.setVideoURI(processedVideoUri);
                     videoView.start();
+                }
+                else {
+                    Log.d("MainActivity", "Processed background video is not ready yet.");
+                }
+            }
+        });
+        processForegroundBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (foregroundVideoUri != null)
+                {
+                    videoView.stopPlayback(); // Stop current playback
+                    videoView.setVideoURI(null);
+                    Log.d("MainActivity", "Foreground video is ready.");
+                    videoView.setVideoURI(foregroundVideoUri);
+                    // Start playback with listeners for errors and completion
+                    videoView.start();
+
+                } else {
+                    Log.d("MainActivity", "Foreground video is not ready yet.");
                 }
             }
         });
         toggleVideoBtn.setVisibility(View.GONE);
+        processForegroundBtn.setVisibility(View.GONE);
     }
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -99,12 +118,20 @@ public class MainActivity extends AppCompatActivity {
 
             // Process video in the background
             AlertDialog processingDialog = new AlertDialog.Builder(MainActivity.this)
-                    .setTitle("Processing Video")
+                    .setTitle("Processing Background Video")
                     .setMessage("Please wait while the video is being processed...")
-                    .setCancelable(false)
+                    .setCancelable(true)
                     .create();
             processingDialog.show();
-
+            new Thread(() -> {
+                foregroundVideoUri = seperateForeground(recordedVideoUri);
+                Log.d("MainActivity", "Foreground processing complete");
+                runOnUiThread(() -> {
+                    if (foregroundVideoUri != null) {
+                        processForegroundBtn.setVisibility(View.VISIBLE);
+                    }
+                });
+            }).start();
             // Process the video in a background thread
             new Thread(() -> {
                 processedVideoUri = seperateBackground(recordedVideoUri);
@@ -135,16 +162,14 @@ public class MainActivity extends AppCompatActivity {
         Log.d("MainActivity", getRealPathFromUri(videoUri));
 
         //Use the Recorded video
-//        VideoCapture videoCapture = new VideoCapture(getRealPathFromUri(videoUri));
-        VideoCapture videoCapture = new VideoCapture("/storage/emulated/0/Movies/VID_20241130_152925334.mp4");
+//        VideoCapture videoCapture = new VideoCapture("/storage/emulated/0/Movies/sample6.mp4");
+        VideoCapture videoCapture = new VideoCapture(getRealPathFromUri(videoUri));
+
         if (!videoCapture.isOpened()) {
             Log.e("MainActivity", "Failed to open video");
             return videoUri;
         }
         Log.d("MainActivity", "successfully open the video");
-//        Use the original video size
-//        int frameWidth = (int) videoCapture.get(Videoio.CAP_PROP_FRAME_WIDTH);
-//        int frameHeight = (int) videoCapture.get(Videoio.CAP_PROP_FRAME_HEIGHT);
         int targetWidth = 320;
         int targetHeight = 240;
         double fps = videoCapture.get(Videoio.CAP_PROP_FPS);
@@ -221,48 +246,103 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private Uri seperateForeground(Uri videoUri) {
+        Log.d("MainActivity", "start seperateForeground");
+        String inputVideoPath = getRealPathFromUri(videoUri);
+        String outputVideoPath = getExternalFilesDir(null) + "/masked_output_video.avi";
+        String outputFrameDirPath = getExternalFilesDir(null) + "/frames";
 
-        File outputFile = new File(getExternalFilesDir(null), "processed_foreground.mp4");
-        if (!outputFile.getParentFile().exists()) {
-            boolean created = outputFile.getParentFile().mkdirs();
-            Log.d("MainActivity", "Movies directory created: " + created);
+        // Create the output directory for frames if it doesn't exist
+        File outputFrameDir = new File(outputFrameDirPath);
+        if (!outputFrameDir.exists()) {
+            if (outputFrameDir.mkdirs()) {
+                Log.d("MainActivity", "Created directory for frames: " + outputFrameDirPath);
+            } else {
+                Log.e("MainActivity", "Failed to create directory for frames.");
+                return null;
+            }
         }
-        Log.d("MainActivity", getRealPathFromUri(videoUri));
 
-//        VideoCapture videoCapture = new VideoCapture(getRealPathFromUri(videoUri));
-//        VideoCapture videoCapture = new VideoCapture("/storage/emulated/0/Movies/Original.mp4");
-        VideoCapture videoCapture = new VideoCapture("/storage/emulated/0/Movies/VID_20241130_152925334.mp4");
-        if (!videoCapture.isOpened()) {
+        // Open input video
+//        VideoCapture cap = new VideoCapture("/storage/emulated/0/Movies/sample6.mp4");
+        VideoCapture cap = new VideoCapture(inputVideoPath);
+        if (!cap.isOpened()) {
             Log.e("MainActivity", "Failed to open video");
-            return videoUri;
+            return null;
         }
-        Log.d("MainActivity", "successfully open the video");
-//        Use the original video size
-//        int frameWidth = (int) videoCapture.get(Videoio.CAP_PROP_FRAME_WIDTH);
-//        int frameHeight = (int) videoCapture.get(Videoio.CAP_PROP_FRAME_HEIGHT);
+
+        // Initialize output video
         int targetWidth = 320;
         int targetHeight = 240;
-        double fps = videoCapture.get(Videoio.CAP_PROP_FPS);
-
-        // Initialize video writer
-        VideoWriter videoWriter = new VideoWriter(
-                outputFile.getAbsolutePath(),
+        int fps = 30;
+        VideoWriter writer = new VideoWriter(
+                outputVideoPath,
                 VideoWriter.fourcc('H', '2', '6', '4'),
                 fps,
-                new Size(targetHeight, targetWidth)
+                new Size(targetWidth, targetHeight)
         );
 
-        if (!videoWriter.isOpened()) {
+        if (!writer.isOpened()) {
             Log.e("MainActivity", "Failed to initialize video writer");
-            videoCapture.release();
-            return videoUri;
+            cap.release();
+            return null;
         }
-        Log.d("MainActivity", "videowriter loaded");
+
+        // Initialize models
+        BackgroundModel model = new BackgroundModel(targetWidth, targetHeight, 5, 6, 128);
+        Mat prevMask = null;
+
+        // Process frames
+        Mat frame = new Mat();
+        Mat resizedFrame = new Mat();
+        Mat ycbcrFrame = new Mat();
+        Mat blackBackground = Mat.zeros(new Size(targetWidth, targetHeight), CvType.CV_8UC3); // Black frame
+        int frameCount = 0;
+
+        Log.d("MainActivity", "start processing frames");
+        while (cap.read(frame)) {
+//            if(frameCount%10!=0){
+//                frameCount++;
+//                continue;
+//            }
+            Imgproc.resize(frame, resizedFrame, new Size(targetWidth, targetHeight));
+            Imgproc.cvtColor(resizedFrame, ycbcrFrame, Imgproc.COLOR_BGR2YCrCb);
+
+            Mat foregroundMask = model.processFrame(ycbcrFrame);
+
+            Mat processedForeground = model.postProcessForeground(foregroundMask, 50, prevMask,0.7);
+            String frameFilePath1 = outputFrameDirPath + "/mask" + String.format("%04d", frameCount) + ".png";
+            boolean success1 = Imgcodecs.imwrite(frameFilePath1, processedForeground);
+            prevMask = processedForeground.clone();
+
+            Mat maskBinary = new Mat();
+            Imgproc.threshold(processedForeground, maskBinary, 127, 255, Imgproc.THRESH_BINARY);
 
 
+            // Create a frame with the background blacked out
+            Mat foregroundFrame = new Mat();
+            Core.bitwise_and(resizedFrame, resizedFrame, foregroundFrame, maskBinary);
+            Mat finalFrame = new Mat();
+            Imgproc.cvtColor(foregroundFrame, finalFrame, Imgproc.COLOR_BGR2RGB);
+            // Write the frame to the output video
+            writer.write(finalFrame);
 
-        Log.d("MainActivity", "Video processing complete");
-        return Uri.fromFile(outputFile);
+            // Save the current frame as an image
+            String frameFilePath = outputFrameDirPath + "/frame_" + String.format("%04d", frameCount) + ".png";
+            boolean success = Imgcodecs.imwrite(frameFilePath, finalFrame);
+            if (success) {
+                Log.d("MainActivity", "Saved frame to " + frameFilePath);
+            } else {
+                Log.e("MainActivity", "Failed to save frame " + frameFilePath);
+            }
+            frameCount++;
+            frame_Count++;
+            Log.d("MainActivity", "Processing frame " + frameCount);
+        }
+
+        cap.release();
+        writer.release();
+        Log.d("MainActivity", "Processing complete. Video saved as " + outputVideoPath);
+        return Uri.fromFile(new File(outputVideoPath));
     }
     private String getRealPathFromUri(Uri contentUri) {
         String[] projection = { MediaStore.Video.Media.DATA };

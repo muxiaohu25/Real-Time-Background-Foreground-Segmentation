@@ -31,6 +31,21 @@
         android:id="@+id/idBtnToggleVideo"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Show Processed Video"
+        android:text="Show Background Video"
+        android:layout_alignParentTop="true"
+        android:layout_alignParentStart="true"
+        android:layout_marginTop="16dp"
+        android:layout_marginStart="16dp"
         android:visibility="gone" /> <!-- Initially hidden -->
+    <Button
+        android:id="@+id/idBtnProcessForeground"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Show Foreground Video"
+        android:visibility="gone"
+        android:layout_alignParentTop="true"
+        android:layout_alignParentEnd="true"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="16dp"
+        />
 </RelativeLayout>
